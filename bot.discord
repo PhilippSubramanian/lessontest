@@ -1,1 +1,95 @@
+import discord
+from discord.ext import commands
+import random
+import youtube_dl
+import asyncio
+intents = discord.Intents.default()
+intents.message_content = True
+
+
+bot = commands.Bot(command_prefix='!', intents=intents)
+
+@bot.event
+async def on_ready():
+    print(f'Logged in as {bot.user} (ID: {bot.user.id})')
+    print('im, working')
+
+
+@bot.command(description='For when you wanna settle the score some other way')
+async def choose(ctx, *choices: str):
+    """Chooses between multiple choices."""
+    await ctx.send(random.choice(choices))
+
+@bot.command()
+async def hello(ctx,):
+    await ctx.send('здравстуйтве мой друг')
+@bot.command()
+async def poka(ctx,):
+    await ctx.send('до свидания мой друг')
+
+@bot.command()
+async def repeat(ctx, times: int, content='repeating...'):
+    """Repeats a message multiple times."""
+    for i in range(times):
+        await ctx.send(content)
+
+@bot.command()
+async def info(ctx,):
+    await ctx.send('я умею:выбрать случайное число(!choice число) повторять ваше сообщение(!repeat и сколько раз)')
+
+# Настройки youtube_dl
+ytdl_format_options = {
+    'format': 'bestaudio/best',
+    'noplaylist': True,
+    'quiet': True,
+}
+
+ffmpeg_options = {
+    'options': '-vn'
+}
+
+ytdl = youtube_dl.YoutubeDL(ytdl_format_options)
+
+# Класс для обработки источника
+class YTDLSource(discord.PCMVolumeTransformer):
+    @classmethod
+    async def from_url(cls, url, *, loop=None, stream=True):
+        loop = loop or asyncio.get_event_loop()
+        data = await loop.run_in_executor(None, lambda: ytdl.extract_info(url, download=not stream))
+
+        if 'entries' in data:
+            data = data['entries'][0]
+
+        filename = data['url'] if stream else ytdl.prepare_filename(data)
+        return discord.FFmpegPCMAudio(filename, **ffmpeg_options), data.get('title')
+
+
+# Команда для подключения к голосовому каналу
+@bot.command()
+async def join(ctx):
+        if ctx.author.voice:
+            channel = ctx.author.voice.channel
+            await channel.connect()
+        else:
+            await ctx.send("Вы не находитесь в голосовом канале.")
+
+# Команда для отключения от голосового канала
+@bot.command()
+async def leave(ctx):
+    if ctx.voice_client:
+        await ctx.voice_client.disconnect()
+    else:
+        await ctx.send("Бот не подключен к голосовому каналу.")
+
+# Команда для стриминга музыки
+@bot.command()
+async def stream(ctx, *, url):
+    """Стримит музыку с URL"""
+    async with ctx.typing():
+        player, title = await YTDLSource.from_url(url, loop=bot.loop, stream=True)
+        ctx.voice_client.play(player, after=lambda e: print(f'Ошибка плеера: {e}') if e else None)
+
+    await ctx.send(f'Сейчас играет: {title}')
+
+bot.run('123')
 
